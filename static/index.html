@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPT/PDF to Multi-Slide PDF Converter</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PPT/PDF to Multi-Slide PDF Converter</h1>
+            <p>Convert PowerPoint presentations or PDFs into PDFs with multiple slides per page</p>
+        </header>
+
+        <main>
+            <div class="upload-area" id="dropZone">
+                <div class="upload-content">
+                    <img src="upload-icon.svg" alt="Upload" class="upload-icon">
+                    <p>Drag and drop files here</p>
+                    <p class="subtext">or</p>
+                    <button class="browse-btn">Browse Files</button>
+                    <input type="file" id="fileInput" multiple accept=".pdf,.ppt,.pptx" style="display: none;">
+                </div>
+            </div>
+
+            <div class="settings">
+                <h2>Layout Settings</h2>
+                <div class="settings-grid">
+                    <div class="setting">
+                        <label for="slidesPerRow">Slides per Row</label>
+                        <input type="number" id="slidesPerRow" min="1" max="6" value="3">
+                    </div>
+                    <div class="setting">
+                        <label for="gap">Gap (points)</label>
+                        <input type="number" id="gap" min="0" max="50" value="10">
+                    </div>
+                    <div class="setting">
+                        <label for="margin">Margin (points)</label>
+                        <input type="number" id="margin" min="0" max="100" value="20">
+                    </div>
+                    <div class="setting">
+                        <label for="topMargin">Top Margin (points)</label>
+                        <input type="number" id="topMargin" min="0" max="100" value="0">
+                    </div>
+                </div>
+                <div class="setting single-file-option">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="singleFile">
+                        <span>Combine all files into a single PDF</span>
+                    </label>
+                    <p class="setting-description">When enabled, all slides will be combined into one PDF file. Each input file's slides will start on a new page.</p>
+                </div>
+            </div>
+
+            <div class="file-list" id="fileList">
+                <h2>Selected Files</h2>
+                <div class="files" id="files"></div>
+            </div>
+
+            <button class="convert-btn" id="convertBtn">Convert Files</button>
+        </main>
+
+        <div class="modal" id="progressModal">
+            <div class="modal-content">
+                <h2>Converting Files</h2>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress" id="progressBar"></div>
+                    </div>
+                    <p id="progressText">Processing...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 
