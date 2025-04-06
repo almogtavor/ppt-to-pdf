@@ -12,8 +12,9 @@ import glob
 
 def convert_ppt_to_images(ppt_file, output_dir):
     """
-    Convert each slide of the given PowerPoint file to an image.
+    Convert each slide of the given PowerPoint file to a JPEG image.
     Uses the COM interface (via comtypes) on Windows with Microsoft PowerPoint installed.
+    The exported PNG is converted to a lower-quality JPEG to reduce file size.
     """
     try:
         import comtypes.client
@@ -29,9 +30,16 @@ def convert_ppt_to_images(ppt_file, output_dir):
     image_paths = []
 
     for slide in presentation.Slides:
-        img_path = os.path.join(output_dir, f"slide_{slide.SlideIndex}.png")
-        slide.Export(img_path, "PNG")
-        image_paths.append(img_path)
+        # Export slide as PNG first
+        png_path = os.path.join(output_dir, f"slide_{slide.SlideIndex}.png")
+        slide.Export(png_path, "PNG")
+        # Convert PNG to JPEG with compression
+        jpg_path = os.path.join(output_dir, f"slide_{slide.SlideIndex}.jpg")
+        with Image.open(png_path) as img:
+            rgb_img = img.convert("RGB")
+            rgb_img.save(jpg_path, "JPEG", quality=60, optimize=True)
+        os.remove(png_path)
+        image_paths.append(jpg_path)
 
     presentation.Close()
     powerpoint.Quit()
@@ -39,7 +47,8 @@ def convert_ppt_to_images(ppt_file, output_dir):
 
 def convert_pdf_to_images(pdf_file, output_dir):
     """
-    Convert PDF pages to images using PyMuPDF.
+    Convert PDF pages to JPEG images using PyMuPDF.
+    The JPEG quality is set to 60 to reduce file size.
     """
     try:
         import fitz  # PyMuPDF
@@ -63,12 +72,11 @@ def convert_pdf_to_images(pdf_file, output_dir):
             raise Exception("PDF file is empty")
         image_paths = []
         for i, page in enumerate(doc):
-            # Use a 2x zoom for better quality
+            # Use a 2x zoom for better quality before compression
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-            # Save as JPEG with compression
             img_path = os.path.join(output_dir, f"slide_{i + 1}.jpg")
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            img.save(img_path, 'JPEG', quality=75, optimize=True)
+            img.save(img_path, 'JPEG', quality=60, optimize=True)
             image_paths.append(img_path)
         print(f"Successfully converted and saved {len(image_paths)} pages")
         return image_paths
@@ -91,27 +99,23 @@ def convert_file_to_images(file_path, output_dir):
 def add_images_to_canvas(c, image_paths, slides_per_row=2, gap=10, margin=20, top_margin=0):
     """
     Draws the provided slide images onto the given ReportLab canvas 'c'
-    using a grid layout on as many A4 pages as needed. Returns the number of pages used.
+    using a grid layout on as many A4 pages as needed.
+    Returns the number of pages used.
     """
     a4_width, a4_height = A4
 
     if not image_paths:
         return 0
 
-    # Use first image to determine aspect ratio (assumes all slides have the same ratio)
     with Image.open(image_paths[0]) as im:
         orig_w, orig_h = im.size
     aspect_ratio = orig_w / orig_h
 
-    # Calculate available space on the page
     available_width = a4_width - 2 * margin - (slides_per_row - 1) * gap
     available_height = a4_height - top_margin - margin
-
-    # Determine slide size preserving aspect ratio
     slide_width = available_width / slides_per_row
     slide_height = slide_width / aspect_ratio
 
-    # Determine how many rows can fit vertically
     rows_fit = math.floor((available_height + gap) / (slide_height + gap))
     if rows_fit < 1:
         rows_fit = 1
@@ -153,9 +157,9 @@ def add_images_to_canvas(c, image_paths, slides_per_row=2, gap=10, margin=20, to
 def create_pdf_from_images(image_paths, output_pdf, slides_per_row=2, gap=10, margin=20, top_margin=0, pdf_names=None):
     """
     Create a PDF from a list of slide images using grid layout.
-    This function is used when combining images from multiple files without forcing new pages per file.
     """
     c = canvas.Canvas(output_pdf, pagesize=A4)
+    c.setPageCompression(1)  # Enable page compression
     add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin)
     c.save()
 
@@ -217,8 +221,8 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
 
     if single_file:
         if new_page_per_pdf:
-            # Combined PDF with each file's slides on separate pages and an outline entry per file.
             c = canvas.Canvas(output_path, pagesize=A4)
+            c.setPageCompression(1)
             current_page = 1
             for input_path in input_paths:
                 print(f"\nProcessing file: {input_path}")
@@ -227,18 +231,15 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                     image_paths = convert_file_to_images(input_path, temp_dir)
                     if not image_paths:
                         raise Exception("No images were generated for file: " + input_path)
-                    # Add an outline (bookmark) entry at the start page of this file's slides.
                     bookmark_name = os.path.splitext(os.path.basename(input_path))[0]
                     c.bookmarkPage(f"page_{current_page}")
                     c.addOutlineEntry(bookmark_name, f"page_{current_page}", 0)
-                    # Add the file's images to the canvas.
                     pages_used = add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin)
                     current_page += pages_used
                 finally:
                     shutil.rmtree(temp_dir)
             c.save()
         else:
-            # Combine all images into one list and create a single PDF without forcing page breaks per file.
             all_image_paths = []
             temp_dirs = []
             pdf_names = []
@@ -257,7 +258,6 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                 for d in temp_dirs:
                     shutil.rmtree(d)
     else:
-        # Process files individually.
         if os.path.isdir(output_path):
             for input_path in input_paths:
                 filename = os.path.basename(input_path)
@@ -279,7 +279,7 @@ if __name__ == "__main__":
     parser.add_argument("--margin", type=int, default=20, help="Margin (in points) on the sides and bottom (default: 20)")
     parser.add_argument("--top_margin", type=int, default=0, help="Margin (in points) at the top of the page (default: 0)")
     parser.add_argument("--single_file", action="store_true", help="Combine all slides into a single PDF file")
-    parser.add_argument("--no_new_page", action="store_true", help="Disable forcing each PDF's slides on new pages (only applies when --single_file is used)")
+    parser.add_argument("--no_new_page", action="store_true", help="Disable forcing each PDF's slides on a new page (only applies when --single_file is used)")
     args = parser.parse_args()
 
     try:
@@ -299,7 +299,7 @@ if __name__ == "__main__":
             args.margin,
             args.top_margin,
             args.single_file,
-            new_page_per_pdf=not args.no_new_page  # new_page_per_pdf defaults to True if not disabled
+            new_page_per_pdf=not args.no_new_page
         )
         print(f"Successfully created PDF(s) in: {args.output}")
     except Exception as e:
