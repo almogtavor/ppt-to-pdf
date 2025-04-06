@@ -1,81 +1,163 @@
-from flask import Flask, request, jsonify, send_file
+import streamlit as st
 import os
 import tempfile
-import shutil
-from main import process_file, process_directory
-from werkzeug.utils import secure_filename
+from main import process_files
+import glob
 
-app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+st.set_page_config(
+    page_title="PPT/PDF to Multi-Slide PDF Converter",
+    page_icon="📄",
+    layout="wide"
+)
 
-ALLOWED_EXTENSIONS = {'pdf', 'ppt', 'pptx'}
+# Custom CSS
+st.markdown("""
+    <style>
+    .stApp {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    .upload-area {
+        border: 2px dashed #ccc;
+        border-radius: 5px;
+        padding: 20px;
+        text-align: center;
+        margin: 20px 0;
+    }
+    .file-list {
+        margin: 20px 0;
+    }
+    .settings {
+        background-color: #f0f2f6;
+        padding: 20px;
+        border-radius: 5px;
+        margin: 20px 0;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+st.title("📄 PPT/PDF to Multi-Slide PDF Converter")
+st.markdown("""
+    Convert PowerPoint presentations and PDFs into multi-slide PDFs with customizable layouts.
+    Upload your files and adjust the settings to create the perfect layout.
+""")
 
-@app.route('/')
-def index():
-    return app.send_static_file('index.html')
+# File upload
+st.subheader("Upload Files")
+uploaded_files = st.file_uploader(
+    "Choose files",
+    type=['pdf', 'ppt', 'pptx'],
+    accept_multiple_files=True
+)
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'files[]' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-    
-    files = request.files.getlist('files[]')
-    if not files or files[0].filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    
-    # Get parameters
-    slides_per_row = int(request.form.get('slides_per_row', 3))
-    gap = int(request.form.get('gap', 10))
-    margin = int(request.form.get('margin', 20))
-    top_margin = int(request.form.get('top_margin', 0))
-    single_file = request.form.get('single_file', 'false').lower() == 'true'
-    
-    # Create output directory
-    output_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'output')
-    os.makedirs(output_dir, exist_ok=True)
-    
-    input_paths = []
-    try:
-        # Save all uploaded files
-        for file in files:
-            if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(input_path)
-                input_paths.append(input_path)
-        
-        if not input_paths:
-            return jsonify({'error': 'No valid files processed'}), 400
-        
-        # Process files
-        if single_file:
-            # Create a single output file
-            output_path = os.path.join(output_dir, 'combined.pdf')
-            process_files(input_paths, output_path, slides_per_row, gap, margin, top_margin, single_file=True)
-            return send_file(output_path, as_attachment=True, download_name='combined.pdf')
-        else:
-            # Process each file separately
-            for input_path in input_paths:
-                filename = os.path.basename(input_path)
-                output_path = os.path.join(output_dir, os.path.splitext(filename)[0] + '.pdf')
-                process_files([input_path], output_path, slides_per_row, gap, margin, top_margin)
-            
-            # Create zip file of results
-            zip_path = os.path.join(app.config['UPLOAD_FOLDER'], 'converted.zip')
-            shutil.make_archive(zip_path[:-4], 'zip', output_dir)
-            return send_file(zip_path, as_attachment=True, download_name='converted.zip')
-            
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        # Clean up input files
-        for input_path in input_paths:
-            if os.path.exists(input_path):
-                os.remove(input_path)
+# Settings
+st.subheader("Layout Settings")
+col1, col2 = st.columns(2)
 
-if __name__ == '__main__':
-    app.run(debug=True) 
+with col1:
+    slides_per_row = st.slider(
+        "Slides per Row",
+        min_value=1,
+        max_value=6,
+        value=2,
+        help="Number of slides to display in each row"
+    )
+    gap = st.slider(
+        "Gap between Slides",
+        min_value=0,
+        max_value=50,
+        value=10,
+        help="Space between slides in points"
+    )
+
+with col2:
+    margin = st.slider(
+        "Margin",
+        min_value=0,
+        max_value=50,
+        value=20,
+        help="Margin on sides and bottom in points"
+    )
+    top_margin = st.slider(
+        "Top Margin",
+        min_value=0,
+        max_value=50,
+        value=0,
+        help="Margin at the top in points"
+    )
+
+# Additional options
+st.subheader("Output Options")
+single_file = st.checkbox(
+    "Combine all slides into a single PDF",
+    value=True,
+    help="Create one PDF with all slides combined"
+)
+new_page_per_pdf = st.checkbox(
+    "Start each PDF's slides on a new page",
+    value=True,
+    help="Add a blank page between different PDFs"
+)
+
+# Process button
+if st.button("Convert to PDF", type="primary"):
+    if not uploaded_files:
+        st.error("Please upload at least one file")
+    else:
+        with st.spinner("Processing files..."):
+            try:
+                # Create temporary directory for uploaded files
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    # Save uploaded files
+                    input_paths = []
+                    for uploaded_file in uploaded_files:
+                        file_path = os.path.join(temp_dir, uploaded_file.name)
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        input_paths.append(file_path)
+
+                    # Create output file
+                    output_file = os.path.join(temp_dir, "output.pdf")
+
+                    # Process files
+                    process_files(
+                        input_paths,
+                        output_file,
+                        slides_per_row=slides_per_row,
+                        gap=gap,
+                        margin=margin,
+                        top_margin=top_margin,
+                        single_file=single_file,
+                        new_page_per_pdf=new_page_per_pdf
+                    )
+
+                    # Read the output file
+                    with open(output_file, "rb") as f:
+                        pdf_bytes = f.read()
+
+                    # Download button
+                    st.download_button(
+                        label="Download PDF",
+                        data=pdf_bytes,
+                        file_name="output.pdf",
+                        mime="application/pdf"
+                    )
+                    st.success("Conversion completed successfully!")
+
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
+
+# Instructions
+st.markdown("""
+    ### Instructions
+    1. Upload your PowerPoint (.ppt, .pptx) or PDF files
+    2. Adjust the layout settings to your preference
+    3. Choose whether to combine all slides into a single PDF
+    4. Click "Convert to PDF" to process the files
+    5. Download the resulting PDF
+
+    ### Tips
+    - For best results, use similar-sized slides
+    - Adjust the margins and gaps to optimize the layout
+    - The "Slides per Row" setting affects the size of each slide
+""") 
