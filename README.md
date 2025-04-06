@@ -8,6 +8,8 @@ A tool to convert PowerPoint presentations and PDFs into PDFs with multiple slid
 - Customize layout with adjustable slides per row, gaps, and margins
 - Process multiple files at once
 - Option to combine all slides into a single PDF file
+- Layout page showing the order of PDFs in the combined output
+- Option to start each PDF's slides on a new page
 - Web-based interface with drag-and-drop support
 - Command-line interface for batch processing
 - Support for non-ASCII characters in file paths
@@ -62,6 +64,8 @@ python app.py
    - Choose between:
      - Separate PDFs (zipped together)
      - Single combined PDF (all slides in one file)
+   - Option to start each PDF on a new page
+   - Layout page showing PDF order
    - View progress during conversion
    - Automatic download of results
 
@@ -77,6 +81,7 @@ Options:
 - `--margin`: Margin on sides and bottom in points (default: 20)
 - `--top_margin`: Margin at the top in points (default: 0)
 - `--single_file`: Combine all slides into a single PDF file
+- `--new_page_per_pdf`: Start each PDF's slides on a new page (only applies in single_file mode)
 
 Examples:
 ```bash
@@ -88,11 +93,15 @@ python main.py input_folder output_folder --slides_per_row 2 --gap 15
 
 # Combine multiple files into a single PDF
 python main.py input_folder combined.pdf --single_file --slides_per_row 3
+
+# Combine files with each PDF starting on a new page
+python main.py input_folder combined.pdf --single_file --new_page_per_pdf --slides_per_row 3
 ```
 
 ## Notes
 
-- When using the single file option, each input file's slides will start on a new page
+- When using the single file option, a layout page is automatically added showing the order of PDFs
+- The `new_page_per_pdf` option ensures each PDF's slides start on a new page
 - The tool maintains aspect ratios and optimizes slide sizes for readability
 - For best results with PowerPoint files, ensure Microsoft PowerPoint is installed
 - The web interface supports multiple file uploads and provides visual feedback during processing
