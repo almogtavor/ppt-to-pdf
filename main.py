@@ -13,7 +13,7 @@ import pathlib
 import glob
 
 # You can adjust this scale factor (default 2 means 2x resolution)
-COMPOSITE_SCALE = 2
+COMPOSITE_SCALE = 3
 
 def convert_ppt_to_images(ppt_file, output_dir):
     """
@@ -40,7 +40,7 @@ def convert_ppt_to_images(ppt_file, output_dir):
         with Image.open(png_path) as img:
             rgb_img = img.convert("RGB")
             jpg_path = os.path.join(output_dir, f"slide_{slide.SlideIndex}.jpg")
-            rgb_img.save(jpg_path, "JPEG", quality=95, optimize=True, progressive=True)
+            rgb_img.save(jpg_path, "JPEG", quality=150, optimize=True, progressive=True)
         os.remove(png_path)
         image_paths.append(jpg_path)
 
@@ -80,7 +80,7 @@ def convert_pdf_to_images(pdf_file, output_dir):
             pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
             img_path = os.path.join(output_dir, f"slide_{i + 1}.jpg")
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            img.save(img_path, 'JPEG', quality=95, optimize=True, progressive=True)
+            img.save(img_path, 'JPEG', quality=150, optimize=True, progressive=True)
             image_paths.append(img_path)
         print(f"Successfully converted and saved {len(image_paths)} pages")
         return image_paths
@@ -156,7 +156,7 @@ def add_images_to_canvas(c, image_paths, slides_per_row=2, gap=10, margin=20, to
         page_group = image_paths[i:i+max_slides_per_page]
         composite_img = composite_page(page_group, slides_per_row, gap, margin, top_margin, (a4_w, a4_h), scale=COMPOSITE_SCALE)
         img_buffer = io.BytesIO()
-        composite_img.save(img_buffer, format="JPEG", quality=90, optimize=True, progressive=True)
+        composite_img.save(img_buffer, format="JPEG", quality=150, optimize=True, progressive=True)
         img_buffer.seek(0)
         img_reader = ImageReader(img_buffer)
         c.drawImage(img_reader, 0, 0, width=a4_w, height=a4_h)
