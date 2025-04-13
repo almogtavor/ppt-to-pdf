@@ -3,12 +3,18 @@ import os
 import tempfile
 from main import process_files
 import glob
+import shutil
+import pandas as pd
 
 st.set_page_config(
     page_title="PPT/PDF to Multi-Slide PDF Converter",
     page_icon="📄",
     layout="wide"
 )
+
+# Initialize session state for file ordering if not exists
+if 'file_order' not in st.session_state:
+    st.session_state.file_order = []
 
 # Custom CSS
 st.markdown("""
@@ -49,6 +55,43 @@ uploaded_files = st.file_uploader(
     type=['pdf', 'ppt', 'pptx'],
     accept_multiple_files=True
 )
+
+# Update file order when new files are uploaded
+if uploaded_files:
+    current_files = [f.name for f in uploaded_files]
+    if set(current_files) != set(st.session_state.file_order):
+        st.session_state.file_order = current_files
+
+# Display and manage file order
+if st.session_state.file_order:
+    st.subheader("Arrange File Order")
+    st.write("Use the buttons to move files up or down in the order. The final PDF will follow this order.")
+    
+    # Display files with move buttons
+    for i, filename in enumerate(st.session_state.file_order):
+        col1, col2, col3 = st.columns([4, 1, 1])
+        
+        with col1:
+            st.write(f"{i+1}. {filename}")
+        
+        with col2:
+            if i > 0:  # Not the first item
+                if st.button("↑ Move Up", key=f"up_{i}"):
+                    # Swap with the item above
+                    st.session_state.file_order[i], st.session_state.file_order[i-1] = st.session_state.file_order[i-1], st.session_state.file_order[i]
+                    st.rerun()
+        
+        with col3:
+            if i < len(st.session_state.file_order) - 1:  # Not the last item
+                if st.button("↓ Move Down", key=f"down_{i}"):
+                    # Swap with the item below
+                    st.session_state.file_order[i], st.session_state.file_order[i+1] = st.session_state.file_order[i+1], st.session_state.file_order[i]
+                    st.rerun()
+    
+    # Add a "Reset Order" button
+    if st.button("Reset to Original Upload Order"):
+        st.session_state.file_order = [f.name for f in uploaded_files]
+        st.rerun()
 
 # Settings
 st.subheader("Layout Settings")
@@ -99,6 +142,9 @@ new_page_per_pdf = st.checkbox(
     help="Add a blank page between different PDFs"
 )
 
+# OCR option (enabled by default)
+ocr_enabled = st.checkbox("Enable OCR (recommended)", value=True)
+
 # Process button
 if st.button("Convert to PDF", type="primary"):
     if not uploaded_files:
@@ -108,9 +154,11 @@ if st.button("Convert to PDF", type="primary"):
             try:
                 # Create temporary directory for uploaded files
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    # Save uploaded files
+                    # Save uploaded files in the correct order
                     input_paths = []
-                    for uploaded_file in uploaded_files:
+                    for filename in st.session_state.file_order:
+                        # Find the uploaded file with this name
+                        uploaded_file = next(f for f in uploaded_files if f.name == filename)
                         file_path = os.path.join(temp_dir, uploaded_file.name)
                         with open(file_path, "wb") as f:
                             f.write(uploaded_file.getbuffer())
@@ -130,6 +178,11 @@ if st.button("Convert to PDF", type="primary"):
                         single_file=single_file,
                         new_page_per_pdf=new_page_per_pdf
                     )
+
+                    # Run OCR if enabled
+                    if ocr_enabled:
+                        from main import run_ocr_on_pdf
+                        run_ocr_on_pdf(output_file)
 
                     # Read the output file
                     with open(output_file, "rb") as f:
@@ -151,13 +204,15 @@ if st.button("Convert to PDF", type="primary"):
 st.markdown("""
     ### Instructions
     1. Upload your PowerPoint (.ppt, .pptx) or PDF files
-    2. Adjust the layout settings to your preference
-    3. Choose whether to combine all slides into a single PDF
-    4. Click "Convert to PDF" to process the files
-    5. Download the resulting PDF
+    2. Use the drag-and-drop interface to arrange the files in your desired order
+    3. Adjust the layout settings to your preference
+    4. Choose whether to combine all slides into a single PDF
+    5. Click "Convert to PDF" to process the files
+    6. Download the resulting PDF
 
     ### Tips
     - For best results, use similar-sized slides
     - Adjust the margins and gaps to optimize the layout
     - The "Slides per Row" setting affects the size of each slide
+    - The order of files in the final PDF will match the order you set in the interface
 """) 
