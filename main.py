@@ -101,10 +101,11 @@ def convert_file_to_images(file_path, output_dir):
     else:
         raise Exception("Unsupported file type. Only .ppt, .pptx, and .pdf are supported.")
 
-def composite_page(page_images, slides_per_row, gap, margin, top_margin, a4_size, scale=COMPOSITE_SCALE):
+def composite_page(page_images, slides_per_row, gap, margin, top_margin, a4_size, scale=COMPOSITE_SCALE, rtl=False):
     """
     Composites a list of slide images (file paths) into one single PIL image
     representing a full A4 page. This function upsamples the page by the provided scale factor.
+    With RTL support for right-to-left languages.
     """
     a4_w, a4_h = a4_size
     comp_w, comp_h = a4_w * scale, a4_h * scale
@@ -125,6 +126,11 @@ def composite_page(page_images, slides_per_row, gap, margin, top_margin, a4_size
     for idx, image_path in enumerate(page_images):
         row = idx // slides_per_row
         col = idx % slides_per_row
+        
+        # Adjust column positioning for RTL layout
+        if rtl:
+            col = slides_per_row - 1 - col
+            
         x = margin_scaled + col * (slide_width + gap_scaled)
         y = top_margin_scaled + row * (slide_height + gap_scaled)
         try:
@@ -135,7 +141,7 @@ def composite_page(page_images, slides_per_row, gap, margin, top_margin, a4_size
             print(f"Error processing {image_path}: {e}")
     return composite
 
-def add_images_to_canvas(c, image_paths, slides_per_row=2, gap=10, margin=20, top_margin=0):
+def add_images_to_canvas(c, image_paths, slides_per_row=2, gap=10, margin=20, top_margin=0, rtl=False):
     """
     Groups slide images into pages, composites each page into a high-resolution image,
     and draws the composite image onto the canvas.
@@ -155,7 +161,7 @@ def add_images_to_canvas(c, image_paths, slides_per_row=2, gap=10, margin=20, to
 
     for i in range(0, len(image_paths), max_slides_per_page):
         page_group = image_paths[i:i+max_slides_per_page]
-        composite_img = composite_page(page_group, slides_per_row, gap, margin, top_margin, (a4_w, a4_h), scale=COMPOSITE_SCALE)
+        composite_img = composite_page(page_group, slides_per_row, gap, margin, top_margin, (a4_w, a4_h), scale=COMPOSITE_SCALE, rtl=rtl)
         img_buffer = io.BytesIO()
         composite_img.save(img_buffer, format="JPEG", quality=150, optimize=True, progressive=True)
         img_buffer.seek(0)
@@ -165,16 +171,16 @@ def add_images_to_canvas(c, image_paths, slides_per_row=2, gap=10, margin=20, to
         pages_used += 1
     return pages_used
 
-def create_pdf_from_images(image_paths, output_pdf, slides_per_row=2, gap=10, margin=20, top_margin=0, pdf_names=None):
+def create_pdf_from_images(image_paths, output_pdf, slides_per_row=2, gap=10, margin=20, top_margin=0, pdf_names=None, rtl=False):
     """
     Create a PDF from a list of slide images by compositing each page into a high-resolution image.
     """
     c = canvas.Canvas(output_pdf, pagesize=A4)
     c.setPageCompression(1)
-    add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin)
+    add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin, rtl)
     c.save()
 
-def process_file(input_path, output_path, slides_per_row=2, gap=10, margin=20, top_margin=0):
+def process_file(input_path, output_path, slides_per_row=2, gap=10, margin=20, top_margin=0, rtl=False):
     """
     Process a single file and convert it to a PDF with the specified layout.
     """
@@ -183,7 +189,7 @@ def process_file(input_path, output_path, slides_per_row=2, gap=10, margin=20, t
         image_paths = convert_file_to_images(input_path, temp_dir)
         if not image_paths:
             raise Exception("No images were generated from the input file.")
-        create_pdf_from_images(image_paths, output_path, slides_per_row, gap, margin, top_margin)
+        create_pdf_from_images(image_paths, output_path, slides_per_row, gap, margin, top_margin, rtl=rtl)
     finally:
         shutil.rmtree(temp_dir)
 
@@ -212,7 +218,7 @@ def process_directory(input_dir, output_dir, slides_per_row=2, gap=10, margin=20
             print(f"Error processing {filename}: {str(e)}", file=sys.stderr)
 
 def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20, top_margin=0,
-                  single_file=False, new_page_per_pdf=False):
+                  single_file=False, new_page_per_pdf=False, rtl=False):
     """
     Convert multiple files to PDF(s) with the specified layout.
     """
@@ -234,7 +240,7 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                     bookmark_name = os.path.splitext(os.path.basename(input_path))[0]
                     c.bookmarkPage(f"page_{current_page}")
                     c.addOutlineEntry(bookmark_name, f"page_{current_page}", 0)
-                    pages_used = add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin)
+                    pages_used = add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin, rtl)
                     current_page += pages_used
                 finally:
                     shutil.rmtree(temp_dir)
@@ -253,7 +259,7 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                         raise Exception("No images for file: " + input_path)
                     pdf_names.append(os.path.splitext(os.path.basename(input_path))[0])
                     all_image_paths.extend(image_paths)
-                create_pdf_from_images(all_image_paths, output_path, slides_per_row, gap, margin, top_margin, pdf_names)
+                create_pdf_from_images(all_image_paths, output_path, slides_per_row, gap, margin, top_margin, pdf_names, rtl)
             finally:
                 for d in temp_dirs:
                     shutil.rmtree(d)
@@ -262,11 +268,11 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
             for input_path in input_paths:
                 filename = os.path.basename(input_path)
                 file_output_path = os.path.join(output_path, os.path.splitext(filename)[0] + '.pdf')
-                process_file(input_path, file_output_path, slides_per_row, gap, margin, top_margin)
+                process_file(input_path, file_output_path, slides_per_row, gap, margin, top_margin, rtl)
         else:
             if len(input_paths) > 1:
                 raise Exception("Multiple input files require an output directory when single_file is False")
-            process_file(input_paths[0], output_path, slides_per_row, gap, margin, top_margin)
+            process_file(input_paths[0], output_path, slides_per_row, gap, margin, top_margin, rtl)
 
 def run_ocr_on_pdf(pdf_path):
     """
@@ -295,6 +301,7 @@ if __name__ == "__main__":
     parser.add_argument("--single_file", action="store_true", help="Combine all slides into a single PDF file")
     parser.add_argument("--no_new_page", action="store_true", help="Disable forcing each PDF's slides on a new page (only applies when --single_file is used)")
     parser.add_argument("--ocr", action="store_true", default=True, help="Run OCR on the generated PDF(s) to add a searchable text layer (requires OCRmyPDF)")
+    parser.add_argument("--rtl", action="store_true", help="Enable right-to-left layout")
     args = parser.parse_args()
 
     try:
@@ -315,7 +322,8 @@ if __name__ == "__main__":
             args.margin,
             args.top_margin,
             args.single_file,
-            new_page_per_pdf=not args.no_new_page
+            new_page_per_pdf=not args.no_new_page,
+            rtl=args.rtl
         )
         print(f"Successfully created PDF(s) in: {args.output}")
 

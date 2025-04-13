@@ -109,7 +109,7 @@ with col1:
         "Gap between Slides",
         min_value=0,
         max_value=50,
-        value=10,
+        value=0,
         help="Space between slides in points"
     )
 
@@ -118,7 +118,7 @@ with col2:
         "Margin",
         min_value=0,
         max_value=50,
-        value=20,
+        value=0,
         help="Margin on sides and bottom in points"
     )
     top_margin = st.slider(
@@ -131,19 +131,35 @@ with col2:
 
 # Additional options
 st.subheader("Output Options")
-single_file = st.checkbox(
-    "Combine all slides into a single PDF",
-    value=True,
-    help="Create one PDF with all slides combined"
-)
-new_page_per_pdf = st.checkbox(
-    "Start each PDF's slides on a new page",
-    value=True,
-    help="Add a blank page between different PDFs"
-)
+col1, col2 = st.columns(2)
 
-# OCR option (enabled by default)
-ocr_enabled = st.checkbox("Enable OCR (recommended)", value=True)
+with col1:
+    single_file = st.checkbox(
+        "Combine all slides into a single PDF",
+        value=True,
+        help="Create one PDF with all slides combined"
+    )
+    
+    new_page_per_pdf = st.checkbox(
+        "Start each PDF's slides on a new page",
+        value=True,
+        help="Add a blank page between different PDFs"
+    )
+
+with col2:
+    # RTL layout option
+    rtl_layout = st.checkbox(
+        "Right-to-left layout",
+        value=False,
+        help="Enable right-to-left layout for RTL languages"
+    )
+    
+    # OCR option (enabled by default)
+    ocr_enabled = st.checkbox(
+        "Enable OCR (recommended)", 
+        value=True,
+        help="Add searchable text layer to the PDF"
+    )
 
 # Process button
 if st.button("Convert to PDF", type="primary"):
@@ -176,7 +192,8 @@ if st.button("Convert to PDF", type="primary"):
                         margin=margin,
                         top_margin=top_margin,
                         single_file=single_file,
-                        new_page_per_pdf=new_page_per_pdf
+                        new_page_per_pdf=new_page_per_pdf,
+                        rtl=rtl_layout
                     )
 
                     # Run OCR if enabled
