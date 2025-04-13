@@ -15,19 +15,36 @@ A tool to convert PowerPoint presentations and PDFs into multi-slide PDFs with c
 
 - Python 3.7+
 - Poppler (for PDF conversion)
-- Microsoft PowerPoint (for PPT/PPTX conversion on Windows)
+- Ghostscript (gswin64c) (for PDF processing)
+- Tesseract OCR (only required if using the OCR option)
 
-## Installation
+### Installing Dependencies
 
-1. Install Python dependencies:
+1. Install Python packages:
 ```bash
 pip install -r requirements.txt
 ```
 
 2. Install Poppler:
-   - Windows: Download from [poppler-windows releases](https://github.com/oschwartz10612/poppler-windows/releases/) and add to PATH
-   - Linux: `sudo apt-get install poppler-utils`
-   - macOS: `brew install poppler`
+   - Windows: Download from [poppler releases](https://github.com/oschwartz10612/poppler-windows/releases/)
+   - Extract to a location (e.g., `C:\Program Files\poppler-23.11.0`)
+   - Add the bin folder to your PATH (e.g., `C:\Program Files\poppler-23.11.0\Library\bin`)
+
+3. Install Ghostscript:
+   - Download from [Ghostscript releases](https://github.com/ArtifexSoftware/ghostpdl-downloads/releases)
+   - Run the installer
+   - Make sure to check "Add to PATH" during installation
+   - Restart your terminal/PowerShell window for the PATH changes to take effect
+
+4. Install Tesseract OCR (only needed if using OCR option):
+   - Visit [Tesseract OCR GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
+   - Download the installer for your system (64-bit Windows: `tesseract-ocr-w64-setup-v5.3.3.20231005.exe`)
+   - Run the installer and follow these steps:
+     - Accept the license agreement
+     - Choose "Install for all users" if you have admin rights
+     - Make sure to check the box that says "Add to PATH" during installation
+     - Complete the installation
+   - Restart your terminal/PowerShell window for the PATH changes to take effect
 
 ## Usage
 
@@ -49,6 +66,7 @@ streamlit run app.py
 ### Command Line
 
 ```bash
+py -3.9 -m venv venv 
 # Convert a single file
 python main.py input.pdf output.pdf --slides_per_row 3
 

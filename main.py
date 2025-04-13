@@ -5,6 +5,7 @@ import tempfile
 import shutil
 import argparse
 import io
+import subprocess  # New import for calling OCRmyPDF
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
@@ -12,7 +13,7 @@ from PIL import Image
 import pathlib
 import glob
 
-# You can adjust this scale factor (default 2 means 2x resolution)
+# Increased scale factor for improved resolution; adjust as needed
 COMPOSITE_SCALE = 3
 
 def convert_ppt_to_images(ppt_file, output_dir):
@@ -51,7 +52,7 @@ def convert_ppt_to_images(ppt_file, output_dir):
 def convert_pdf_to_images(pdf_file, output_dir):
     """
     Convert PDF pages to JPEG images using PyMuPDF.
-    The JPEG quality is set to 90.
+    The JPEG quality is set to 95.
     The zoom factor remains unchanged.
     """
     try:
@@ -267,6 +268,20 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                 raise Exception("Multiple input files require an output directory when single_file is False")
             process_file(input_paths[0], output_path, slides_per_row, gap, margin, top_margin)
 
+def run_ocr_on_pdf(pdf_path):
+    """
+    Run OCRmyPDF on a single PDF file to add a hidden, searchable text layer.
+    The output will overwrite the original file.
+    """
+    temp_output = pdf_path + ".ocr.pdf"
+    print(f"Running OCR on {pdf_path}...")
+    try:
+        subprocess.run(["ocrmypdf", pdf_path, temp_output], check=True)
+        shutil.move(temp_output, pdf_path)
+        print("OCR applied successfully.")
+    except Exception as e:
+        print(f"OCR failed: {e}", file=sys.stderr)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Convert PowerPoint presentations or PDFs to PDFs with multiple slides per page by compositing a high-resolution screenshot of each page."
@@ -279,9 +294,11 @@ if __name__ == "__main__":
     parser.add_argument("--top_margin", type=int, default=0, help="Margin (in points) at the top of the page (default: 0)")
     parser.add_argument("--single_file", action="store_true", help="Combine all slides into a single PDF file")
     parser.add_argument("--no_new_page", action="store_true", help="Disable forcing each PDF's slides on a new page (only applies when --single_file is used)")
+    parser.add_argument("--ocr", action="store_true", default=True, help="Run OCR on the generated PDF(s) to add a searchable text layer (requires OCRmyPDF)")
     args = parser.parse_args()
 
     try:
+        # Determine the list of input files from a directory or a single file
         if os.path.isdir(args.input):
             supported_extensions = ['.pdf', '.ppt', '.pptx']
             input_files = []
@@ -301,6 +318,15 @@ if __name__ == "__main__":
             new_page_per_pdf=not args.no_new_page
         )
         print(f"Successfully created PDF(s) in: {args.output}")
+
+        if args.ocr:
+            if os.path.isdir(args.output):
+                pdf_files = glob.glob(os.path.join(args.output, "*.pdf"))
+                for pdf in pdf_files:
+                    run_ocr_on_pdf(pdf)
+            else:
+                run_ocr_on_pdf(args.output)
+
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
