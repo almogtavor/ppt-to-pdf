@@ -12,6 +12,9 @@ from reportlab.lib.utils import ImageReader
 from PIL import Image
 import pathlib
 import glob
+import numpy as np
+import cv2 
+from skimage.metrics import structural_similarity as compare_ssim
 
 # Increased scale factor for improved resolution; adjust as needed
 COMPOSITE_SCALE = 3
@@ -101,16 +104,72 @@ def convert_file_to_images(file_path, output_dir):
     else:
         raise Exception("Unsupported file type. Only .ppt, .pptx, and .pdf are supported.")
 
+def filter_progressive_slides(
+        image_paths,
+        ssim_threshold: float = 0.97,
+        subset_ratio_threshold: float = 0.93,     # NEW – allows small shifts
+        removed_ratio_threshold: float = 0.04,    # renamed for clarity
+        shrink: float = 0.35,                     # speed‑up factor
+        dilate_iter: int = 1):                    # NEW – forgive 1‑2‑px drift
+    """
+    Drop every slide that is just an *earlier* build of the next one.
+
+    • We still look at SSIM (good for exact duplicates).
+    • PLUS we check “subset” overlap after a small dilation:
+        93 % of the previous slide’s foreground pixels must survive.
+    • At most 4 % of prev‑slide pixels may disappear (deleted, not moved).
+
+    Tune the thresholds if you need it to be stricter / laxer.
+    """
+    if len(image_paths) <= 1:
+        return image_paths
+
+    kernel = np.ones((3, 3), np.uint8)           # for dilation
+    keep = []
+    prev_g, prev_b = None, None
+    prev_idx = 0
+
+    def _prep(p):
+        g = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
+        g = cv2.resize(g, (0, 0), fx=shrink, fy=shrink)
+        _, b = cv2.threshold(g, 230, 255, cv2.THRESH_BINARY_INV)
+        b = cv2.dilate(b, kernel, iterations=dilate_iter)
+        return g, b
+
+    prev_g, prev_b = _prep(image_paths[0])
+
+    for idx in range(1, len(image_paths)):
+        cur_g, cur_b = _prep(image_paths[idx])
+
+        # ----- similarity metrics -----
+        ssim = compare_ssim(prev_g, cur_g)
+
+        overlap = cv2.bitwise_and(prev_b, cur_b)
+        overlap_ratio = np.sum(overlap) / max(np.sum(prev_b), 1)
+
+        removed = cv2.bitwise_and(prev_b, cv2.bitwise_not(cur_b))
+        removed_ratio = np.sum(removed) / max(np.sum(prev_b), 1)
+        # --------------------------------
+
+        progressive = (
+            (ssim > ssim_threshold or overlap_ratio > subset_ratio_threshold)
+            and removed_ratio < removed_ratio_threshold
+        )
+
+        if not progressive:
+            keep.append(image_paths[prev_idx])   # keep the earlier slide
+        # else: previous slide is redundant – drop it
+
+        prev_g, prev_b, prev_idx = cur_g, cur_b, idx
+
+    keep.append(image_paths[prev_idx])           # keep last in chain
+    return keep
+
 def composite_page(page_images, slides_per_row, gap, margin, top_margin, a4_size, scale=COMPOSITE_SCALE, rtl=False):
-    """
-    Composites a list of slide images (file paths) into one single PIL image
-    representing a full A4 page. This function upsamples the page by the provided scale factor.
-    With RTL support for right-to-left languages.
-    """
     a4_w, a4_h = a4_size
     comp_w, comp_h = a4_w * scale, a4_h * scale
     composite = Image.new("RGB", (int(comp_w), int(comp_h)), "white")
-    
+
     margin_scaled = margin * scale
     top_margin_scaled = top_margin * scale
     gap_scaled = gap * scale
@@ -126,11 +185,9 @@ def composite_page(page_images, slides_per_row, gap, margin, top_margin, a4_size
     for idx, image_path in enumerate(page_images):
         row = idx // slides_per_row
         col = idx % slides_per_row
-        
-        # Adjust column positioning for RTL layout
         if rtl:
             col = slides_per_row - 1 - col
-            
+
         x = margin_scaled + col * (slide_width + gap_scaled)
         y = top_margin_scaled + row * (slide_height + gap_scaled)
         try:
@@ -160,7 +217,7 @@ def add_images_to_canvas(c, image_paths, slides_per_row=2, gap=10, margin=20, to
     max_slides_per_page = slides_per_row * rows_fit
 
     for i in range(0, len(image_paths), max_slides_per_page):
-        page_group = image_paths[i:i+max_slides_per_page]
+        page_group = image_paths[i:i + max_slides_per_page]
         composite_img = composite_page(page_group, slides_per_row, gap, margin, top_margin, (a4_w, a4_h), scale=COMPOSITE_SCALE, rtl=rtl)
         img_buffer = io.BytesIO()
         composite_img.save(img_buffer, format="JPEG", quality=150, optimize=True, progressive=True)
@@ -187,6 +244,7 @@ def process_file(input_path, output_path, slides_per_row=2, gap=10, margin=20, t
     temp_dir = tempfile.mkdtemp()
     try:
         image_paths = convert_file_to_images(input_path, temp_dir)
+        image_paths = filter_progressive_slides(image_paths)
         if not image_paths:
             raise Exception("No images were generated from the input file.")
         create_pdf_from_images(image_paths, output_path, slides_per_row, gap, margin, top_margin, rtl=rtl)
@@ -202,11 +260,11 @@ def process_directory(input_dir, output_dir, slides_per_row=2, gap=10, margin=20
     input_files = []
     for ext in supported_extensions:
         input_files.extend(glob.glob(os.path.join(input_dir, f'*{ext}')))
-    
+
     if not input_files:
         print(f"No supported files found in {input_dir}")
         return
-    
+
     for input_file in input_files:
         filename = os.path.basename(input_file)
         output_file = os.path.join(output_dir, os.path.splitext(filename)[0] + '.pdf')
@@ -235,6 +293,7 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                 temp_dir = tempfile.mkdtemp(prefix='ppt_to_pdf_')
                 try:
                     image_paths = convert_file_to_images(input_path, temp_dir)
+                    image_paths = filter_progressive_slides(image_paths)
                     if not image_paths:
                         raise Exception("No images were generated for file: " + input_path)
                     bookmark_name = os.path.splitext(os.path.basename(input_path))[0]
@@ -255,6 +314,7 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                     temp_dir = tempfile.mkdtemp(prefix='ppt_to_pdf_')
                     temp_dirs.append(temp_dir)
                     image_paths = convert_file_to_images(input_path, temp_dir)
+                    image_paths = filter_progressive_slides(image_paths)
                     if not image_paths:
                         raise Exception("No images for file: " + input_path)
                     pdf_names.append(os.path.splitext(os.path.basename(input_path))[0])
@@ -305,7 +365,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        # Determine the list of input files from a directory or a single file
         if os.path.isdir(args.input):
             supported_extensions = ['.pdf', '.ppt', '.pptx']
             input_files = []
