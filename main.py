@@ -334,7 +334,7 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                 raise Exception("Multiple input files require an output directory when single_file is False")
             process_file(input_paths[0], output_path, slides_per_row, gap, margin, top_margin, rtl)
 
-def run_ocr_on_pdf(pdf_path):
+def run_ocr_on_pdf(pdf_path, ocr_lang="eng+heb"):
     """
     Run OCRmyPDF on a single PDF file to add a hidden, searchable text layer.
     The output will overwrite the original file.
@@ -342,7 +342,7 @@ def run_ocr_on_pdf(pdf_path):
     temp_output = pdf_path + ".ocr.pdf"
     print(f"Running OCR on {pdf_path}...")
     try:
-        subprocess.run(["ocrmypdf", pdf_path, temp_output], check=True)
+        subprocess.run(["ocrmypdf", "-l", ocr_lang, pdf_path, temp_output], check=True)
         shutil.move(temp_output, pdf_path)
         print("OCR applied successfully.")
     except Exception as e:
@@ -361,6 +361,8 @@ if __name__ == "__main__":
     parser.add_argument("--single_file", action="store_true", help="Combine all slides into a single PDF file")
     parser.add_argument("--no_new_page", action="store_true", help="Disable forcing each PDF's slides on a new page (only applies when --single_file is used)")
     parser.add_argument("--ocr", action="store_true", default=True, help="Run OCR on the generated PDF(s) to add a searchable text layer (requires OCRmyPDF)")
+    parser.add_argument("--ocr-lang", default="eng+heb",
+                    help="Tesseract languages to use for OCR (e.g. 'eng', 'heb', or 'eng+heb')")
     parser.add_argument("--rtl", action="store_true", help="Enable right-to-left layout")
     args = parser.parse_args()
 
@@ -390,9 +392,9 @@ if __name__ == "__main__":
             if os.path.isdir(args.output):
                 pdf_files = glob.glob(os.path.join(args.output, "*.pdf"))
                 for pdf in pdf_files:
-                    run_ocr_on_pdf(pdf)
+                    run_ocr_on_pdf(pdf, args.ocr_lang)
             else:
-                run_ocr_on_pdf(args.output)
+                run_ocr_on_pdf(args.output, args.ocr_lang)
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
