@@ -145,6 +145,13 @@ with col1:
         value=True,
         help="Add a blank page between different PDFs"
     )
+    
+    # Progressive slides filter option
+    filter_progressive = st.checkbox(
+        "Remove progressive slides",
+        value=False,
+        help="Filter out slides that are just builds of the next one"
+    )
 
 with col2:
     # RTL layout option
@@ -193,7 +200,8 @@ if st.button("Convert to PDF", type="primary"):
                         top_margin=top_margin,
                         single_file=single_file,
                         new_page_per_pdf=new_page_per_pdf,
-                        rtl=rtl_layout
+                        rtl=rtl_layout,
+                        filter_progressive=filter_progressive
                     )
 
                     # Run OCR if enabled

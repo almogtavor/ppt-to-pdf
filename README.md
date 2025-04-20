@@ -9,6 +9,7 @@ A tool to convert PowerPoint presentations and PDFs into multi-slide PDFs with c
 - Combine multiple files into a single PDF
 - Option to start each PDF's slides on a new page
 - Support for right-to-left (RTL) layout for languages like Arabic and Hebrew
+- Smart filtering of progressive build slides (optional)
 - Modern web interface with drag-and-drop support
 - Layout page showing the order of PDFs in the combined output
 
@@ -90,6 +91,7 @@ python main.py input_folder combined.pdf --single_file --slides_per_row 3 --no_n
 - `--single_file`: Combine all slides into a single PDF
 - `--no_new_page`: Disable starting each PDF's slides on a new page (only applies when --single_file is used)
 - `--rtl`: Enable right-to-left layout for RTL languages
+- `--filter-progressive`: Remove slides that are just progressive builds of the next slide (disabled by default)
 - `--ocr`: Add searchable text layer to the PDF (enabled by default)
 
 ## Notes

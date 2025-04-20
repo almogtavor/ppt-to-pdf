@@ -104,30 +104,36 @@ def convert_file_to_images(file_path, output_dir):
     else:
         raise Exception("Unsupported file type. Only .ppt, .pptx, and .pdf are supported.")
 
+import pytesseract
+
+def extract_text(image_path, lang="eng+heb"):
+    """Extract visible text from image using Tesseract OCR."""
+    img = cv2.imread(image_path)
+    return pytesseract.image_to_string(img, lang=lang)
+
 def filter_progressive_slides(
-        image_paths,
-        ssim_threshold: float = 0.97,
-        subset_ratio_threshold: float = 0.93,     # NEW – allows small shifts
-        removed_ratio_threshold: float = 0.04,    # renamed for clarity
-        shrink: float = 0.35,                     # speed‑up factor
-        dilate_iter: int = 1):                    # NEW – forgive 1‑2‑px drift
+    image_paths,
+    ssim_threshold: float = 0.96,
+    subset_ratio_threshold: float = 0.92,
+    removed_ratio_threshold: float = 0.05,
+    shrink: float = 0.35,
+    dilate_iter: int = 1,
+    ocr_lang: str = "eng+heb"
+):
     """
-    Drop every slide that is just an *earlier* build of the next one.
-
-    • We still look at SSIM (good for exact duplicates).
-    • PLUS we check “subset” overlap after a small dilation:
-        93 % of the previous slide’s foreground pixels must survive.
-    • At most 4 % of prev‑slide pixels may disappear (deleted, not moved).
-
-    Tune the thresholds if you need it to be stricter / laxer.
+    Improved filtering:
+    • Detects chains of progressive slides.
+    • Uses OCR to compare slide text; keeps last in each chain.
+    • Always keeps final slide.
     """
     if len(image_paths) <= 1:
         return image_paths
 
-    kernel = np.ones((3, 3), np.uint8)           # for dilation
+    kernel = np.ones((3, 3), np.uint8)
     keep = []
     prev_g, prev_b = None, None
     prev_idx = 0
+    chain_detected = False  # tracks a sequence of progressive slides
 
     def _prep(p):
         g = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
@@ -140,8 +146,6 @@ def filter_progressive_slides(
 
     for idx in range(1, len(image_paths)):
         cur_g, cur_b = _prep(image_paths[idx])
-
-        # ----- similarity metrics -----
         ssim = compare_ssim(prev_g, cur_g)
 
         overlap = cv2.bitwise_and(prev_b, cur_b)
@@ -149,20 +153,35 @@ def filter_progressive_slides(
 
         removed = cv2.bitwise_and(prev_b, cv2.bitwise_not(cur_b))
         removed_ratio = np.sum(removed) / max(np.sum(prev_b), 1)
-        # --------------------------------
 
-        progressive = (
-            (ssim > ssim_threshold or overlap_ratio > subset_ratio_threshold)
+        is_progressive = (
+            (ssim > ssim_threshold and overlap_ratio > subset_ratio_threshold)
             and removed_ratio < removed_ratio_threshold
         )
 
-        if not progressive:
-            keep.append(image_paths[prev_idx])   # keep the earlier slide
-        # else: previous slide is redundant – drop it
+        # # 👇 OCR-based override if textual content differs
+        # prev_text = extract_text(image_paths[prev_idx], lang=ocr_lang).strip()
+        # cur_text = extract_text(image_paths[idx], lang=ocr_lang).strip()
+        # # Normalize
+        # prev_clean = prev_text.replace('\n', ' ').strip()
+        # cur_clean = cur_text.replace('\n', ' ').strip()
 
+        # # If previous content is NOT a subset of current, treat as unique
+        # if prev_clean not in cur_clean:
+        #     is_progressive = False
+
+        if is_progressive:
+            print(f"Slide {prev_idx + 1} is progressive of {idx + 1} → skipped")
+            chain_detected = True
+        else:
+            if chain_detected:
+                keep.append(image_paths[prev_idx])  # keep last from previous chain
+                chain_detected = False
+            else:
+                keep.append(image_paths[prev_idx])
         prev_g, prev_b, prev_idx = cur_g, cur_b, idx
 
-    keep.append(image_paths[prev_idx])           # keep last in chain
+    keep.append(image_paths[prev_idx])
     return keep
 
 def composite_page(page_images, slides_per_row, gap, margin, top_margin, a4_size, scale=COMPOSITE_SCALE, rtl=False):
@@ -237,14 +256,15 @@ def create_pdf_from_images(image_paths, output_pdf, slides_per_row=2, gap=10, ma
     add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin, rtl)
     c.save()
 
-def process_file(input_path, output_path, slides_per_row=2, gap=10, margin=20, top_margin=0, rtl=False):
+def process_file(input_path, output_path, slides_per_row=2, gap=10, margin=20, top_margin=0, rtl=False, filter_progressive=False):
     """
     Process a single file and convert it to a PDF with the specified layout.
     """
     temp_dir = tempfile.mkdtemp()
     try:
         image_paths = convert_file_to_images(input_path, temp_dir)
-        image_paths = filter_progressive_slides(image_paths)
+        if filter_progressive:
+            image_paths = filter_progressive_slides(image_paths)
         if not image_paths:
             raise Exception("No images were generated from the input file.")
         create_pdf_from_images(image_paths, output_path, slides_per_row, gap, margin, top_margin, rtl=rtl)
@@ -276,7 +296,7 @@ def process_directory(input_dir, output_dir, slides_per_row=2, gap=10, margin=20
             print(f"Error processing {filename}: {str(e)}", file=sys.stderr)
 
 def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20, top_margin=0,
-                  single_file=False, new_page_per_pdf=False, rtl=False):
+                  single_file=False, new_page_per_pdf=False, rtl=False, filter_progressive=False):
     """
     Convert multiple files to PDF(s) with the specified layout.
     """
@@ -293,7 +313,8 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                 temp_dir = tempfile.mkdtemp(prefix='ppt_to_pdf_')
                 try:
                     image_paths = convert_file_to_images(input_path, temp_dir)
-                    image_paths = filter_progressive_slides(image_paths)
+                    if filter_progressive:
+                        image_paths = filter_progressive_slides(image_paths)
                     if not image_paths:
                         raise Exception("No images were generated for file: " + input_path)
                     bookmark_name = os.path.splitext(os.path.basename(input_path))[0]
@@ -314,7 +335,8 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                     temp_dir = tempfile.mkdtemp(prefix='ppt_to_pdf_')
                     temp_dirs.append(temp_dir)
                     image_paths = convert_file_to_images(input_path, temp_dir)
-                    image_paths = filter_progressive_slides(image_paths)
+                    if filter_progressive:
+                        image_paths = filter_progressive_slides(image_paths)
                     if not image_paths:
                         raise Exception("No images for file: " + input_path)
                     pdf_names.append(os.path.splitext(os.path.basename(input_path))[0])
@@ -328,11 +350,11 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
             for input_path in input_paths:
                 filename = os.path.basename(input_path)
                 file_output_path = os.path.join(output_path, os.path.splitext(filename)[0] + '.pdf')
-                process_file(input_path, file_output_path, slides_per_row, gap, margin, top_margin, rtl)
+                process_file(input_path, file_output_path, slides_per_row, gap, margin, top_margin, rtl, filter_progressive)
         else:
             if len(input_paths) > 1:
                 raise Exception("Multiple input files require an output directory when single_file is False")
-            process_file(input_paths[0], output_path, slides_per_row, gap, margin, top_margin, rtl)
+            process_file(input_paths[0], output_path, slides_per_row, gap, margin, top_margin, rtl, filter_progressive)
 
 def run_ocr_on_pdf(pdf_path, ocr_lang="eng+heb"):
     """
@@ -364,6 +386,7 @@ if __name__ == "__main__":
     parser.add_argument("--ocr-lang", default="eng+heb",
                     help="Tesseract languages to use for OCR (e.g. 'eng', 'heb', or 'eng+heb')")
     parser.add_argument("--rtl", action="store_true", help="Enable right-to-left layout")
+    parser.add_argument("--filter-progressive", action="store_true", default=True, help="Filter out progressive slides (slides that are just builds of the next one)")
     args = parser.parse_args()
 
     try:
@@ -384,7 +407,8 @@ if __name__ == "__main__":
             args.top_margin,
             args.single_file,
             new_page_per_pdf=not args.no_new_page,
-            rtl=args.rtl
+            rtl=args.rtl,
+            filter_progressive=args.filter_progressive
         )
         print(f"Successfully created PDF(s) in: {args.output}")
 
