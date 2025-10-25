@@ -74,9 +74,33 @@ python main.py input.pdf output.pdf --slides_per_row 3
 
 # Convert all files in a directory
 python main.py input_folder output_folder --slides_per_row 3
+python main.py "C:\Users\User\Downloads\Recitation 3.pdf" recitation3.pdf --slides_per_row 3
+python main.py "C:\Users\User\Downloads\Recitation 4.pdf" recitation4.pdf --slides_per_row 3
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\מעהפ\lectures\שיעור #12.pdf" os_lecture12.pdf --slides_per_row 3
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\מעהפ\lectures\שיעור #13.pdf" os_lecture13.pdf --slides_per_row 3
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\סטטס\תרגולים\Lecture 9.pdf" stats9_rec.pdf --slides_per_row 2 --rtl
+
+# nlp
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\nlp\lectures\05_nlg.pdf" nlp5.pdf --slides_per_row 3
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\nlp\lectures\07_alignment.pdf" nlp7.pdf --slides_per_row 3
+
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\סטטס\הרצאות\הרצאה 11 - מצגת.pdf" stat11.pdf --slides_per_row 2 --rtl
+
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\סטטס\תרגולים\Lecture 11.pdf" stats11_rec.pdf --slides_per_row 2 --rtl
+
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\מעהפ\recitations\rec09_mutex.pdf" os9_rec.pdf --slides_per_row 2
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\מעהפ\recitations\rec10_network.pdf" os10_rec.pdf --slides_per_row 2
+
+# ml
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\ml\recitations\Recitation 7 2425B (handout).pdf" ml7_rec.pdf --slides_per_row 2
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\ml\recitations\Recitation 8 2425B (handout).pdf" ml8_rec.pdf --slides_per_row 2
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\ml\recitations\Recitation 9 2425B (handout).pdf" ml9_rec.pdf --slides_per_row 2
+python main.py "D:\אוניברסיטה\שנה ב\סמסטר ב\ml\recitations\Recitation 11 2425B (handout).pdf" ml11_rec.pdf --slides_per_row 2
 
 # Combine multiple files into one PDF
 python main.py input_folder combined.pdf --single_file --slides_per_row 3
+python main.py "D:\code\tau\ppt-to-pdf\os" os_lec.pdf --single_file --slides_per_row 3
+python main.py "C:\Users\User\Downloads\Lectures 2324B-20250427" ml_presentations.pdf --single_file --slides_per_row 3
 
 # Combine files with each PDF starting on a new page
 python main.py input_folder combined.pdf --single_file --slides_per_row 3 --no_new_page

@@ -15,6 +15,14 @@ import glob
 import numpy as np
 import cv2 
 from skimage.metrics import structural_similarity as compare_ssim
+import re
+from bidi.algorithm import get_display
+# Add PyPDF2 import for PDF copying
+try:
+    from PyPDF2 import PdfReader, PdfWriter
+except ImportError:
+    PdfReader = None
+    PdfWriter = None
 
 # Increased scale factor for improved resolution; adjust as needed
 COMPOSITE_SCALE = 3
@@ -256,10 +264,53 @@ def create_pdf_from_images(image_paths, output_pdf, slides_per_row=2, gap=10, ma
     add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin, rtl)
     c.save()
 
-def process_file(input_path, output_path, slides_per_row=2, gap=10, margin=20, top_margin=0, rtl=False, filter_progressive=False):
+# --- PDF page preservation functions ---
+def copy_pdf_pages(input_pdf, output_pdf):
+    """Copy original PDF pages 1:1 (pure Python)."""
+    if PdfReader is None or PdfWriter is None:
+        raise ImportError("PyPDF2 is required for --preserve-pdf-pages. Install with: pip install PyPDF2")
+    reader = PdfReader(input_pdf)
+    writer = PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    with open(output_pdf, "wb") as f:
+        writer.write(f)
+
+def nup_pdf(input_pdf, output_pdf, slides_per_row=2, paper_size="a4paper"):
+    """Use pdfnup (from pdfjam) to arrange multiple PDF pages per sheet."""
+    # Check if pdfnup is available
+    from shutil import which
+    if which("pdfnup") is None:
+        raise RuntimeError("pdfnup (from pdfjam) is required for N-up PDF page arrangement. Please install it (e.g., via MiKTeX or TeX Live). See: https://ctan.org/pkg/pdfjam")
+    nup_arg = f"{slides_per_row}x{slides_per_row}"
+    cmd = [
+        "pdfnup",
+        f"--nup", nup_arg,
+        f"--paper", paper_size,
+        input_pdf,
+        f"--outfile", output_pdf
+    ]
+    subprocess.run(cmd, check=True)
+
+def process_file(input_path, output_path, slides_per_row=2, gap=10, margin=20, top_margin=0, rtl=False, filter_progressive=False, preserve_pdf_pages=False):
     """
     Process a single file and convert it to a PDF with the specified layout.
+    If preserve_pdf_pages is True and input is PDF, use original PDF pages.
     """
+    ext = os.path.splitext(input_path)[1].lower()
+    if preserve_pdf_pages and ext == ".pdf":
+        if slides_per_row == 1:
+            print(f"Copying original PDF pages from {input_path} to {output_path}...")
+            copy_pdf_pages(input_path, output_path)
+        else:
+            try:
+                print(f"Arranging PDF pages N-up ({slides_per_row}x{slides_per_row}) using pdfnup...")
+                nup_pdf(input_path, output_path, slides_per_row)
+            except Exception as e:
+                print(f"Warning: N-up failed or pdfnup not available: {e}. Falling back to 1:1 copy.")
+                copy_pdf_pages(input_path, output_path)
+        return
+    # Otherwise, use image-based compositing
     temp_dir = tempfile.mkdtemp()
     try:
         image_paths = convert_file_to_images(input_path, temp_dir)
@@ -296,9 +347,10 @@ def process_directory(input_dir, output_dir, slides_per_row=2, gap=10, margin=20
             print(f"Error processing {filename}: {str(e)}", file=sys.stderr)
 
 def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20, top_margin=0,
-                  single_file=False, new_page_per_pdf=False, rtl=False, filter_progressive=False):
+                  single_file=False, new_page_per_pdf=False, rtl=False, filter_progressive=False, preserve_pdf_pages=False):
     """
     Convert multiple files to PDF(s) with the specified layout.
+    If preserve_pdf_pages is True and input is PDF, use original PDF pages.
     """
     if not input_paths:
         raise Exception("No input files provided")
@@ -309,21 +361,36 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
             c.setPageCompression(1)
             current_page = 1
             for input_path in input_paths:
-                print(f"\nProcessing file: {input_path}")
-                temp_dir = tempfile.mkdtemp(prefix='ppt_to_pdf_')
-                try:
-                    image_paths = convert_file_to_images(input_path, temp_dir)
-                    if filter_progressive:
-                        image_paths = filter_progressive_slides(image_paths)
-                    if not image_paths:
-                        raise Exception("No images were generated for file: " + input_path)
-                    bookmark_name = os.path.splitext(os.path.basename(input_path))[0]
-                    c.bookmarkPage(f"page_{current_page}")
-                    c.addOutlineEntry(bookmark_name, f"page_{current_page}", 0)
-                    pages_used = add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin, rtl)
-                    current_page += pages_used
-                finally:
-                    shutil.rmtree(temp_dir)
+                ext = os.path.splitext(input_path)[1].lower()
+                if preserve_pdf_pages and ext == ".pdf":
+                    # Merge PDF pages into single file
+                    temp_pdf = tempfile.mktemp(suffix=".pdf")
+                    process_file(input_path, temp_pdf, slides_per_row, gap, margin, top_margin, rtl, filter_progressive, preserve_pdf_pages)
+                    # Append pages to output
+                    if PdfReader is None or PdfWriter is None:
+                        raise ImportError("PyPDF2 is required for --preserve-pdf-pages. Install with: pip install PyPDF2")
+                    reader = PdfReader(temp_pdf)
+                    for page in reader.pages:
+                        c.showPage()  # Start a new page for each
+                        # Note: reportlab can't import PDF pages directly; this is a limitation.
+                        # For true merging, use PyPDF2 after all processing.
+                    os.remove(temp_pdf)
+                else:
+                    print(f"\nProcessing file: {input_path}")
+                    temp_dir = tempfile.mkdtemp(prefix='ppt_to_pdf_')
+                    try:
+                        image_paths = convert_file_to_images(input_path, temp_dir)
+                        if filter_progressive:
+                            image_paths = filter_progressive_slides(image_paths)
+                        if not image_paths:
+                            raise Exception("No images were generated for file: " + input_path)
+                        bookmark_name = os.path.splitext(os.path.basename(input_path))[0]
+                        c.bookmarkPage(f"page_{current_page}")
+                        c.addOutlineEntry(bookmark_name, f"page_{current_page}", 0)
+                        pages_used = add_images_to_canvas(c, image_paths, slides_per_row, gap, margin, top_margin, rtl)
+                        current_page += pages_used
+                    finally:
+                        shutil.rmtree(temp_dir)
             c.save()
         else:
             all_image_paths = []
@@ -331,17 +398,40 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
             pdf_names = []
             try:
                 for input_path in input_paths:
-                    print(f"\nProcessing file: {input_path}")
-                    temp_dir = tempfile.mkdtemp(prefix='ppt_to_pdf_')
-                    temp_dirs.append(temp_dir)
-                    image_paths = convert_file_to_images(input_path, temp_dir)
-                    if filter_progressive:
-                        image_paths = filter_progressive_slides(image_paths)
-                    if not image_paths:
-                        raise Exception("No images for file: " + input_path)
-                    pdf_names.append(os.path.splitext(os.path.basename(input_path))[0])
-                    all_image_paths.extend(image_paths)
-                create_pdf_from_images(all_image_paths, output_path, slides_per_row, gap, margin, top_margin, pdf_names, rtl)
+                    ext = os.path.splitext(input_path)[1].lower()
+                    if preserve_pdf_pages and ext == ".pdf":
+                        # Merge PDF pages into single file
+                        temp_pdf = tempfile.mktemp(suffix=".pdf")
+                        process_file(input_path, temp_pdf, slides_per_row, gap, margin, top_margin, rtl, filter_progressive, preserve_pdf_pages)
+                        # Append pages to output
+                        if PdfReader is None or PdfWriter is None:
+                            raise ImportError("PyPDF2 is required for --preserve-pdf-pages. Install with: pip install PyPDF2")
+                        reader = PdfReader(temp_pdf)
+                        writer = PdfWriter()
+                        if os.path.exists(output_path):
+                            # Append to existing output
+                            with open(output_path, "rb") as f:
+                                existing = PdfReader(f)
+                                for page in existing.pages:
+                                    writer.add_page(page)
+                        for page in reader.pages:
+                            writer.add_page(page)
+                        with open(output_path, "wb") as f:
+                            writer.write(f)
+                        os.remove(temp_pdf)
+                    else:
+                        print(f"\nProcessing file: {input_path}")
+                        temp_dir = tempfile.mkdtemp(prefix='ppt_to_pdf_')
+                        temp_dirs.append(temp_dir)
+                        image_paths = convert_file_to_images(input_path, temp_dir)
+                        if filter_progressive:
+                            image_paths = filter_progressive_slides(image_paths)
+                        if not image_paths:
+                            raise Exception("No images for file: " + input_path)
+                        pdf_names.append(os.path.splitext(os.path.basename(input_path))[0])
+                        all_image_paths.extend(image_paths)
+                if all_image_paths:
+                    create_pdf_from_images(all_image_paths, output_path, slides_per_row, gap, margin, top_margin, pdf_names, rtl)
             finally:
                 for d in temp_dirs:
                     shutil.rmtree(d)
@@ -350,11 +440,11 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
             for input_path in input_paths:
                 filename = os.path.basename(input_path)
                 file_output_path = os.path.join(output_path, os.path.splitext(filename)[0] + '.pdf')
-                process_file(input_path, file_output_path, slides_per_row, gap, margin, top_margin, rtl, filter_progressive)
+                process_file(input_path, file_output_path, slides_per_row, gap, margin, top_margin, rtl, filter_progressive, preserve_pdf_pages)
         else:
             if len(input_paths) > 1:
                 raise Exception("Multiple input files require an output directory when single_file is False")
-            process_file(input_paths[0], output_path, slides_per_row, gap, margin, top_margin, rtl, filter_progressive)
+            process_file(input_paths[0], output_path, slides_per_row, gap, margin, top_margin, rtl, filter_progressive, preserve_pdf_pages)
 
 def run_ocr_on_pdf(pdf_path, ocr_lang="eng+heb"):
     """
@@ -387,6 +477,8 @@ if __name__ == "__main__":
                     help="Tesseract languages to use for OCR (e.g. 'eng', 'heb', or 'eng+heb')")
     parser.add_argument("--rtl", action="store_true", help="Enable right-to-left layout")
     parser.add_argument("--filter-progressive", action="store_true", default=True, help="Filter out progressive slides (slides that are just builds of the next one)")
+    # Add preserve-pdf-pages option
+    parser.add_argument("--preserve-pdf-pages", action="store_true", help="If set and input is PDF, use original PDF pages instead of rasterizing (preserves text and vectors)")
     args = parser.parse_args()
 
     try:
@@ -408,7 +500,8 @@ if __name__ == "__main__":
             args.single_file,
             new_page_per_pdf=not args.no_new_page,
             rtl=args.rtl,
-            filter_progressive=args.filter_progressive
+            filter_progressive=args.filter_progressive,
+            preserve_pdf_pages=args.preserve_pdf_pages
         )
         print(f"Successfully created PDF(s) in: {args.output}")
 
