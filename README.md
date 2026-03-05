@@ -28,15 +28,17 @@ pip install -r requirements.txt
 ```
 
 2. Install Poppler:
-   - Windows: Download from [poppler releases](https://github.com/oschwartz10612/poppler-windows/releases/)
+   - `Windows`: Download from [poppler releases](https://github.com/oschwartz10612/poppler-windows/releases/)
    - Extract to a location (e.g., `C:\Program Files\poppler-23.11.0`)
    - Add the bin folder to your PATH (e.g., `C:\Program Files\poppler-23.11.0\Library\bin`)
+   - `Mac` - `brew install poppler`
 
 3. Install Ghostscript:
    - Download from [Ghostscript releases](https://github.com/ArtifexSoftware/ghostpdl-downloads/releases)
    - Run the installer
    - Make sure to check "Add to PATH" during installation
    - Restart your terminal/PowerShell window for the PATH changes to take effect
+   - `Mac` - `brew install ghostscript`
 
 4. Install Tesseract OCR (only needed if using OCR option):
    - Visit [Tesseract OCR GitHub](https://github.com/UB-Mannheim/tesseract/wiki)
@@ -47,6 +49,7 @@ pip install -r requirements.txt
      - Make sure to check the box that says "Add to PATH" during installation
      - Complete the installation
    - Restart your terminal/PowerShell window for the PATH changes to take effect
+   - `Mac` - `brew install tesseract`
 
 ## Usage
 
