@@ -106,7 +106,7 @@ def convert_file_to_images(file_path, output_dir):
 
 import pytesseract
 
-def extract_text(image_path, lang="eng+heb"):
+def extract_text(image_path, lang="eng"):
     """Extract visible text from image using Tesseract OCR."""
     img = cv2.imread(image_path)
     return pytesseract.image_to_string(img, lang=lang)
@@ -118,7 +118,7 @@ def filter_progressive_slides(
     removed_ratio_threshold: float = 0.05,
     shrink: float = 0.35,
     dilate_iter: int = 1,
-    ocr_lang: str = "eng+heb"
+    ocr_lang: str = "eng"
 ):
     """
     Improved filtering:
@@ -280,6 +280,7 @@ def process_directory(input_dir, output_dir, slides_per_row=2, gap=10, margin=20
     input_files = []
     for ext in supported_extensions:
         input_files.extend(glob.glob(os.path.join(input_dir, f'*{ext}')))
+    input_files.sort()
 
     if not input_files:
         print(f"No supported files found in {input_dir}")
@@ -356,7 +357,7 @@ def process_files(input_paths, output_path, slides_per_row=2, gap=10, margin=20,
                 raise Exception("Multiple input files require an output directory when single_file is False")
             process_file(input_paths[0], output_path, slides_per_row, gap, margin, top_margin, rtl, filter_progressive)
 
-def run_ocr_on_pdf(pdf_path, ocr_lang="eng+heb"):
+def run_ocr_on_pdf(pdf_path, ocr_lang="eng"):
     """
     Run OCRmyPDF on a single PDF file to add a hidden, searchable text layer.
     The output will overwrite the original file.
@@ -383,10 +384,15 @@ if __name__ == "__main__":
     parser.add_argument("--single_file", action="store_true", help="Combine all slides into a single PDF file")
     parser.add_argument("--no_new_page", action="store_true", help="Disable forcing each PDF's slides on a new page (only applies when --single_file is used)")
     parser.add_argument("--ocr", action="store_true", default=True, help="Run OCR on the generated PDF(s) to add a searchable text layer (requires OCRmyPDF)")
-    parser.add_argument("--ocr-lang", default="eng+heb",
-                    help="Tesseract languages to use for OCR (e.g. 'eng', 'heb', or 'eng+heb')")
+    parser.add_argument("--ocr-lang", default="eng",
+                    help="Tesseract languages to use for OCR (e.g. 'eng', 'heb', or 'eng')")
     parser.add_argument("--rtl", action="store_true", help="Enable right-to-left layout")
-    parser.add_argument("--filter-progressive", action="store_true", default=True, help="Filter out progressive slides (slides that are just builds of the next one)")
+    parser.add_argument(
+        "--filter-progressive",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Filter out progressive slides (slides that are just builds of the next one). Disable with --no-filter-progressive."
+    )
     args = parser.parse_args()
 
     try:
@@ -395,6 +401,7 @@ if __name__ == "__main__":
             input_files = []
             for ext in supported_extensions:
                 input_files.extend(glob.glob(os.path.join(args.input, f'*{ext}')))
+            input_files.sort()
         else:
             input_files = [args.input]
 
